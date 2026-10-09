@@ -108,14 +108,7 @@
     });
 
     // A permanent line, not just a toast, so it is obvious the tap registered.
-    var picked = $('#send-picked');
-    if (sendFiles.length) {
-      picked.textContent = sendFiles.length + ' file' + (sendFiles.length > 1 ? 's' : '') +
-        ' selected \u00b7 ' + fmtBytes(totalOf(sendFiles));
-      picked.hidden = false;
-    } else {
-      picked.hidden = true;
-    }
+    updatePicked();
 
     var total = totalOf(sendFiles);
     $('#send-go').disabled = sendFiles.length === 0 || sendInvited;
@@ -144,6 +137,43 @@
     note.hidden = !txt;
   }
 
+  /* The Photos app is drawn by iOS, so a web page cannot put a spinner inside
+     it. What we can do is make the round trip unmistakable: show that the tap
+     registered, then say plainly whether a file arrived or the pick was
+     cancelled. */
+  var picking = false;
+
+  function markPicking() {
+    picking = true;
+    updatePicked();
+  }
+
+  function updatePicked() {
+    var el = $('#send-picked');
+    if (!el) return;
+    el.classList.toggle('busy', !!picking);
+
+    var count = sendFiles.length;
+    var have = count
+      ? count + ' file' + (count > 1 ? 's' : '') + ' selected · ' + fmtBytes(totalOf(sendFiles))
+      : '';
+
+    if (picking) {
+      // Always say we are waiting, even if earlier files are still selected -
+      // otherwise a tap with files already in the list looks like it did nothing.
+      el.textContent = have ? have + ' — waiting for the next choice…'
+                            : 'Waiting for you to choose a file in Photos…';
+      el.hidden = false;
+      return;
+    }
+    if (have) {
+      el.textContent = have;
+      el.hidden = false;
+      return;
+    }
+    el.hidden = true;
+  }
+
   /* iOS Safari can drop the `change` event for the Photo Library entirely, so
      poll the input for a while after the picker closes. */
   var watchTimer = null;
@@ -158,7 +188,18 @@
         syncInput(input);
         return;
       }
-      if (ticks > 40) { clearInterval(watchTimer); watchTimer = null; }
+      // Out of patience with no new files: that was a cancel, not a failure.
+      // Always clear the flag, or a cancel with files already chosen would
+      // leave the page stuck saying it is still waiting.
+      if (ticks > 40) {
+        clearInterval(watchTimer);
+        watchTimer = null;
+        if (picking) {
+          picking = false;
+          updatePicked();
+          if (!sendFiles.length) toast('No file chosen');
+        }
+      }
     }, 250);
   }
 
@@ -183,6 +224,8 @@
     if (input.files && input.files.length) {
       var added = addFiles(input.files);
       input.value = '';
+      picking = false;
+      updatePicked();
       if (added > 0) toast(added + ' file' + (added > 1 ? 's' : '') + ' added');
       scrollListIntoView();
       return true;
@@ -499,8 +542,8 @@
     });
     // The picker closes without a reliable event on iOS, so start watching as
     // soon as the user touches the zone.
-    drop.addEventListener('touchstart', function () { watchInput(input); }, { passive: true });
-    drop.addEventListener('pointerdown', function () { watchInput(input); });
+    drop.addEventListener('touchstart', function () { markPicking(); watchInput(input); }, { passive: true });
+    drop.addEventListener('pointerdown', function () { markPicking(); watchInput(input); });
     drop.addEventListener('mouseenter', function () { watchInput(input); });
 
     ['dragenter', 'dragover'].forEach(function (t) {

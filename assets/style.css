@@ -335,6 +335,14 @@ input[type="text"]:focus { outline: none; border-color: var(--accent); box-shado
     border-radius: 9px;
 }
 
+/* Waiting on the system picker: deliberately a different colour, because
+   nothing has been chosen yet. */
+.note.picked.busy {
+    color: var(--accent);
+    background: rgba(91, 140, 255, .1);
+    border-color: rgba(91, 140, 255, .35);
+}
+
 /* -------------------------------------------------------------- offer -- */
 
 .offer { margin-top: .3rem; }
