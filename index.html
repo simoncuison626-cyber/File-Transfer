@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>transferfile.com &mdash; send files straight to your phone</title>
+<meta name="description" content="Send files straight between your phone, tablet and computer. Nothing is uploaded to a server.">
+<meta name="theme-color" content="#0a0d14">
+<meta name="color-scheme" content="dark">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="transferfile">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="assets/icon-180.png">
+<link rel="icon" type="image/svg+xml" href="assets/icon.svg">
+<link rel="stylesheet" href="assets/style.css">
+<style>
+/* Emergency fallback. If the stylesheet is slow, blocked or fails, this still
+   renders readable text instead of a blank page. Delete nothing; style.css
+   overrides all of it. */
+html { background: #0a0d14; color: #e8edf6; }
+body { margin: 0; padding: 16px; font: 16px/1.5 -apple-system, system-ui, sans-serif; }
+h1, h2 { margin: 0 0 8px; }
+.hint, .tagline, .foot { color: #93a1b8; }
+a { color: #5b8cff; }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap top-inner">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 9.5h12"/><path d="M12.8 6.2 16.5 9.5l-3.7 3.3"/>
+          <path d="M20 14.5H8"/><path d="M11.2 11.2 7.5 14.5l3.7 3.3"/>
+        </svg>
+      </span>
+      <span class="brand-name">transferfile<span class="brand-tld">.com</span></span>
+    </div>
+    <p class="tagline">Direct device&rarr;device transfer &middot; no uploads, no accounts</p>
+  </div>
+</header>
+
+<main class="wrap grid">
+
+  <!-- ------------------------------------------------------------------ SEND -->
+  <section class="panel" id="panel-send" aria-labelledby="h-send">
+    <div class="panel-head">
+      <h2 id="h-send">1 &middot; Send files</h2>
+      <p class="hint">This is the device the files are coming <em>from</em>.</p>
+    </div>
+
+    <div class="drop" id="drop" tabindex="0" role="button" aria-label="Choose files to send">
+      <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 16V4"/><path d="m7.5 8.5 4.5-4.5 4.5 4.5"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>
+      </svg>
+      <strong>Choose files</strong>
+      <span>or drop them here</span>
+      <input type="file" id="file-input" multiple hidden>
+    </div>
+
+    <ul class="filelist" id="send-files"></ul>
+    <p class="note warn" id="send-size-note" hidden></p>
+
+    <button class="btn primary block" id="send-go" disabled>Create invite</button>
+
+    <div class="invite" id="invite" hidden>
+      <div class="qr-box" id="qr" role="img" aria-label="Pairing QR code"></div>
+      <div class="invite-body">
+        <p class="hint">On the <b>other</b> device, open this site and type in the <b>6-digit code</b> &mdash; or scan it with the <b>Camera app</b>.</p>
+        <output class="code" id="send-code">connecting&hellip;</output>
+        <div class="btn-row">
+          <button class="btn ghost sm" id="copy-link">Copy invite link</button>
+          <button class="btn ghost sm" id="copy-code">Copy code</button>
+        </div>
+        <p class="status" id="send-status" data-tone="busy">Starting up&hellip;</p>
+      </div>
+    </div>
+
+    <div class="meter" id="send-meter" hidden>
+      <div class="meter-top">
+        <span id="send-phase">Sending</span>
+        <span id="send-rate" class="mono"></span>
+      </div>
+      <div class="track"><div class="fill" id="send-fill"></div></div>
+      <div class="meter-bot">
+        <span class="mono" id="send-count">0 / 0</span>
+        <button class="btn danger sm" id="send-cancel">Cancel</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- --------------------------------------------------------------- RECEIVE -->
+  <section class="panel" id="panel-recv" aria-labelledby="h-recv">
+    <div class="panel-head">
+      <h2 id="h-recv">2 &middot; Receive files</h2>
+      <p class="hint">This is the device the files are going <em>to</em>.</p>
+    </div>
+
+    <div class="field">
+<label for="recv-input">6-digit code or invite link</label>
+        <div class="row">
+          <input type="text" id="recv-input" placeholder="481920" inputmode="numeric" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="go" maxlength="200">
+        <button class="btn primary" id="recv-go">Connect</button>
+      </div>
+    </div>
+
+    <p class="status" id="recv-status" data-tone="idle"></p>
+
+    <div class="offer" id="offer" hidden>
+      <ul class="filelist" id="recv-files"></ul>
+      <div class="btn-row end">
+        <button class="btn ghost" id="recv-reject">Decline</button>
+        <button class="btn primary" id="recv-accept">Accept &amp; receive</button>
+      </div>
+    </div>
+
+    <div class="meter" id="recv-meter" hidden>
+      <div class="meter-top">
+        <span id="recv-phase">Receiving</span>
+        <span id="recv-rate" class="mono"></span>
+      </div>
+      <div class="track"><div class="fill" id="recv-fill"></div></div>
+      <div class="meter-bot">
+        <span class="mono" id="recv-count">0 / 0</span>
+        <button class="btn danger sm" id="recv-cancel">Cancel</button>
+      </div>
+    </div>
+
+    <ul class="outlist" id="recv-out"></ul>
+  </section>
+
+</main>
+
+<footer class="wrap foot">
+  <p>Files travel over an encrypted peer-to-peer WebRTC connection. This page is static and hosted for free &mdash; it never sees your files.</p>
+  <p class="foot-tip">Tip: open this page in Safari and tap <b>Share &rarr; Add to Home Screen</b> so it behaves like an app.</p>
+</footer>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script src="assets/vendor/peerjs.min.js"></script>
+<script src="assets/vendor/qrcode-generator.js"></script>
+<script src="assets/net.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>
