@@ -207,6 +207,18 @@
     if (this.conn && this.conn.open) this.conn.send(ctrlFrame(obj));
   };
 
+  /* PeerJS does not surface bufferedAmount on the DataConnection - it is only
+     on the underlying RTCDataChannel. Reading conn.bufferedAmount gives
+     undefined, the comparison is always false, and the sender happily queues
+     the entire file in PeerJS's own buffer. Read the real channel. */
+  Session.prototype.buffered = function () {
+    try {
+      var dc = this.conn && this.conn.dataChannel;
+      if (dc && typeof dc.bufferedAmount === 'number') return dc.bufferedAmount;
+    } catch (e) { }
+    return 0;
+  };
+
   Session.prototype.close = function () {
     this.aborted = true;
     try { if (this.conn) this.conn.close(); } catch (e) {}
@@ -251,6 +263,15 @@
       if (this.on.request) this.on.request();
     } else if (msg.t === 'accept') {
       this._pump();
+    } else if (msg.t === 'complete') {
+      // The receiver has every byte and has assembled the files. Now it is
+      // safe to drop the peer.
+      this.aborted = false;
+      this.state = 'done';
+      clearTimeout(this._ackTimer);
+      if (this.on.done) this.on.done();
+      var self = this;
+      setTimeout(function () { self.close(); }, 250);
     } else if (msg.t === 'reject') {
       this.aborted = true;
       if (this.on.rejected) this.on.rejected();
@@ -283,11 +304,13 @@
       if (self.aborted) return;
       if (i >= files.length) {
         self.sendCtrl({ t: 'done' });
-        self.state = 'done';
-        if (self.on.done) self.on.done();
-        // A 6-digit code is easy to guess, so stop answering to it as soon as
-        // the transfer is over. The delay lets the last message flush.
-        setTimeout(function () { self.close(); }, 1500);
+        self.state = 'sent';
+        if (self.on.sent) self.on.sent();
+        // Hold the peer open until the receiver acknowledges. Tearing it down
+        // as soon as we finish writing would strand a slow receiver, which is
+        // how large transfers used to freeze part way through.
+        clearTimeout(self._ackTimer);
+        self._ackTimer = setTimeout(function () { self.close(); }, 120000);
         return;
       }
       var file = files[i];
@@ -303,7 +326,7 @@
           nextFile();
           return;
         }
-        if (self.conn.bufferedAmount > HIGH_WATER) { sleep(20).then(nextChunk); return; }
+        if (self.buffered() > HIGH_WATER) { sleep(20).then(nextChunk); return; }
 
         var end = Math.min(offset + CHUNK_SIZE, file.size);
         file.slice(offset, end).arrayBuffer().then(function (buf) {
@@ -395,6 +418,9 @@
       if (this.on.fileEnd) this.on.fileEnd(slot, blob);
     } else if (msg.t === 'done') {
       this.state = 'done';
+      // Tell the sender we have everything, so it can retire the code and
+      // close down instead of guessing that writing to the socket was enough.
+      this.sendCtrl({ t: 'complete' });
       if (this.on.done) this.on.done();
     } else if (msg.t === 'cancel') {
       this.aborted = true;

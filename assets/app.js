@@ -122,8 +122,15 @@
     $('#send-go').textContent = sendFiles.length ? 'Create invite for ' + sendFiles.length + ' file' + (sendFiles.length > 1 ? 's' : '') : 'Create invite';
 
     var note = $('#send-size-note');
-    if (total > 2 * 1024 * 1024 * 1024) {
-      note.textContent = 'That is ' + fmtBytes(total) + '. Very large transfers can fail on phones - splitting it up is safer.';
+    var GB = 1024 * 1024 * 1024;
+    if (total > GB) {
+      note.textContent = 'That is ' + fmtBytes(total) + '. Files this large are held in memory ' +
+        'until they are saved, so a phone may run out of space. Receiving on a ' +
+        'computer is much safer, and splitting the file is safest of all.';
+      note.hidden = false;
+    } else if (total > 400 * 1024 * 1024) {
+      note.textContent = 'That is ' + fmtBytes(total) + '. Large transfers work, but they need ' +
+        'both devices to stay on the page and awake until the progress reaches 100%.';
       note.hidden = false;
     } else {
       note.hidden = true;
@@ -250,9 +257,12 @@
         status($('#send-status'), 'The other device declined.', 'bad');
       },
       progress: function (info) { renderMeter('send', info); },
+      sent: function () {
+        status($('#send-status'), 'All bytes sent. Waiting for them to be saved on the other device...', 'busy');
+      },
       done: function () {
         finishMeter('send');
-        status($('#send-status'), 'All files delivered.', 'good');
+        status($('#send-status'), 'Delivered and saved on the other device.', 'good');
         toast('Sent ' + sendFiles.length + ' file' + (sendFiles.length > 1 ? 's' : ''));
       },
       remoteCancel: function () {
