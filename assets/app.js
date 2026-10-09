@@ -88,18 +88,51 @@
   var sendFiles = [];
   var sender = null;
   var sendInvited = false;
+  var sendSeq = 0;
+
+  /* A file chosen from the Photos app can be unreadable - deleted from iCloud,
+     still being exported, or too big for iOS to hand over. That failure only
+     shows up when the file is read, which used to be mid-transfer. Read the
+     first slice straight away so a bad file is called out before anything is
+     sent. */
+  function probeFile(file, seq) {
+    if (typeof file.slice !== 'function' || typeof file.arrayBuffer !== 'function') return;
+    var probe;
+    try { probe = file.slice(0, 64 * 1024).arrayBuffer(); }
+    catch (e) { markFileBad(seq, 'cannot be read'); return; }
+    if (!probe || !probe.then) return;
+    probe.then(function (buf) {
+      if (!buf || !buf.byteLength) markFileBad(seq, 'came back empty from Photos');
+    }, function () {
+      markFileBad(seq, 'cannot be read - try picking it from the Files app instead');
+    });
+  }
+
+  function markFileBad(seq, why) {
+    // Ignore if the file has since been removed.
+    var idx = sendFiles.findIndex(function (f) { return f.__seq === seq; });
+    if (idx < 0) return;
+    sendFiles[idx].__bad = why;
+    renderSendFiles();
+  }
+
+  function badCount() {
+    return sendFiles.filter(function (f) { return f.__bad; }).length;
+  }
 
   function renderSendFiles() {
     var ul = $('#send-files');
     ul.innerHTML = '';
     sendFiles.forEach(function (file, idx) {
       var li = document.createElement('li');
+      if (file.__bad) li.classList.add('bad');
       li.innerHTML =
         '<span class="fname"></span>' +
         '<span class="fsize mono"></span>' +
         '<button class="icon-btn" type="button" aria-label="Remove">&times;</button>';
       li.querySelector('.fname').textContent = file.name;
-      li.querySelector('.fsize').textContent = fmtBytes(file.size);
+      li.querySelector('.fname').title = file.__bad ? file.__bad : file.name;
+      li.querySelector('.fsize').textContent = file.__bad ? file.__bad : fmtBytes(file.size);
       li.querySelector('button').addEventListener('click', function () {
         sendFiles.splice(idx, 1);
         renderSendFiles();
@@ -111,7 +144,10 @@
     updatePicked();
 
     var total = totalOf(sendFiles);
-    $('#send-go').disabled = sendFiles.length === 0 || sendInvited;
+    // Must be computed before the guard below - it was used before assignment
+    // once, which silently let unreadable files through to the transfer.
+    var bad = badCount();
+    $('#send-go').disabled = sendFiles.length === 0 || sendInvited || bad > 0;
     $('#send-go').textContent = sendFiles.length ? 'Create invite for ' + sendFiles.length + ' file' + (sendFiles.length > 1 ? 's' : '') : 'Create invite';
 
     var note = $('#send-size-note');
@@ -122,7 +158,11 @@
     var needs = total * 1.05;
     var txt = '';
 
-    if (total > GB) {
+    if (bad > 0) {
+      txt = bad + ' file' + (bad > 1 ? 's' : '') + ' could not be read. On iPhone this usually means ' +
+        'Photos would not hand it over — pick ' + (bad > 1 ? 'them' : 'it') + ' from the Files app instead, then remove ' +
+        (bad > 1 ? 'them' : 'it') + ' from the list above.';
+    } else if (total > GB) {
       txt = 'This is ' + fmtBytes(total) + '. Receiving it holds about ' + fmtBytes(needs) +
         ' in memory until you save it, so send it to a computer — an iPhone will run ' +
         'out of memory and Safari will close the page. Expect it to take several minutes; ' +
@@ -137,15 +177,31 @@
     note.hidden = !txt;
   }
 
-  /* The Photos app is drawn by iOS, so a web page cannot put a spinner inside
-     it. What we can do is make the round trip unmistakable: show that the tap
-     registered, then say plainly whether a file arrived or the pick was
-     cancelled. */
+  function isIOS() {
+    var ua = navigator.userAgent || '';
+    return /iPhone|iPad|iPod/.test(ua) ||
+           (/Macintosh/.test(ua) && (navigator.maxTouchPoints || 0) > 1);
+  }
+
+  /* The Photos app is drawn by iOS, so a web page cannot put a progress
+     indicator inside it - that part is not reachable from a page. What the
+     page can do is close the loop around it: show that the tap registered,
+     say we are waiting, count the seconds so a slow export does not look
+     frozen, and say plainly whether a file arrived or the pick was cancelled. */
   var picking = false;
+  var pickingSince = 0;
+  var tickTimer = null;
 
   function markPicking() {
     picking = true;
+    pickingSince = Date.now();
     updatePicked();
+    if (!tickTimer) {
+      tickTimer = setInterval(function () {
+        if (!picking) { clearInterval(tickTimer); tickTimer = null; return; }
+        updatePicked();
+      }, 1000);
+    }
   }
 
   function updatePicked() {
@@ -159,10 +215,17 @@
       : '';
 
     if (picking) {
-      // Always say we are waiting, even if earlier files are still selected -
-      // otherwise a tap with files already in the list looks like it did nothing.
-      el.textContent = have ? have + ' — waiting for the next choice…'
-                            : 'Waiting for you to choose a file in Photos…';
+      // iOS copies a Photos selection into a temporary file before the page
+      // sees it, so count the seconds rather than sitting there looking frozen.
+      var secs = Math.round((Date.now() - pickingSince) / 1000);
+      var wait;
+      if (isIOS() && secs > 8) {
+        wait = 'Still waiting for iOS to hand the file over (' + secs + 's). ' +
+               'If it stays like this, pick it from the Files app instead - that works reliably.';
+      } else {
+        wait = 'Waiting for the file picker' + (secs > 1 ? ' (' + secs + 's)' : '') + '…';
+      }
+      el.textContent = have ? have + ' — ' + wait : wait;
       el.hidden = false;
       return;
     }
@@ -175,7 +238,11 @@
   }
 
   /* iOS Safari can drop the `change` event for the Photo Library entirely, so
-     poll the input for a while after the picker closes. */
+     poll the input for a while after the picker closes.
+
+     The patience here matters: iOS exports a Photos selection into a temporary
+     copy before the page sees it, and for a multi-GB video that can take far
+     longer than ten seconds. Declaring "No file chosen" early would be a lie. */
   var watchTimer = null;
   function watchInput(input) {
     if (watchTimer) clearInterval(watchTimer);
@@ -188,10 +255,8 @@
         syncInput(input);
         return;
       }
-      // Out of patience with no new files: that was a cancel, not a failure.
-      // Always clear the flag, or a cancel with files already chosen would
-      // leave the page stuck saying it is still waiting.
-      if (ticks > 40) {
+      // Only call it a cancel once we are well past any plausible export.
+      if (ticks > 240) { // ~60s
         clearInterval(watchTimer);
         watchTimer = null;
         if (picking) {
@@ -211,7 +276,12 @@
       var dup = sendFiles.some(function (f) {
         return f.name === file.name && f.size === file.size && f.lastModified === file.lastModified;
       });
-      if (!dup) { sendFiles.push(file); added++; }
+      if (!dup) {
+        file.__seq = ++sendSeq;
+        sendFiles.push(file);
+        added++;
+        probeFile(file, file.__seq);
+      }
     }
     renderSendFiles();
     return added;
@@ -223,11 +293,13 @@
   function syncInput(input) {
     if (input.files && input.files.length) {
       var added = addFiles(input.files);
-      input.value = '';
       picking = false;
       updatePicked();
       if (added > 0) toast(added + ' file' + (added > 1 ? 's' : '') + ' added');
       scrollListIntoView();
+      // Always hand the next tap a brand new input; reusing one is what leaves
+      // iOS opening a picker that returns nothing.
+      resetInput();
       return true;
     }
     return false;
@@ -527,24 +599,63 @@
 
   /* ----------------------------------------------------------------- wire -- */
 
+  /* iOS Safari will not reliably hand over files chosen from the Photos app,
+     while the Files app on the very same input works. Two differences matter:
+
+     - Photos honours the input's `multiple` flag badly; drop it on iOS so the
+       picker takes the simple single-select path.
+     - A reused input can end up in a state where the picker opens, the user
+       picks, taps Done and no files ever arrive. Swapping in a brand new
+       element after every pick avoids that.
+
+     Both are applied on iOS only; desktop keeps multi-select. */
+
+  function armInput(el) {
+    el.addEventListener('change', function () { syncInput(el); });
+    return el;
+  }
+
+  function makeInput() {
+    var el = document.createElement('input');
+    el.type = 'file';
+    el.id = 'file-input';
+    el.setAttribute('aria-label', 'Choose files to send');
+    if (!isIOS()) el.multiple = true;
+    return armInput(el);
+  }
+
+  function resetInput() {
+    var old = $('#file-input');
+    if (!old || !old.parentNode) return;
+    var fresh = makeInput();
+    old.parentNode.replaceChild(fresh, old);
+  }
+
+  function startPicking() {
+    markPicking();
+    var input = $('#file-input');
+    if (input) watchInput(input);
+  }
+
   function init() {
     // ---- send panel
     var drop = $('#drop');
-    var input = $('#file-input');
+
+    // Start from a clean input built by makeInput(), so iOS gets a fresh
+    // element rather than whatever the markup shipped with.
+    var existing = $('#file-input');
+    var input = makeInput();
+    existing.parentNode.replaceChild(input, existing);
 
     // The input itself is what the user taps; do not call input.click() from
     // script, because iOS Safari ignores that and opens nothing.
-    input.addEventListener('change', function () { syncInput(input); });
-
-    window.addEventListener('focus', function () { watchInput(input); });
+    window.addEventListener('focus', function () { if (picking) watchInput($('#file-input')); });
     document.addEventListener('visibilitychange', function () {
-      if (!document.hidden) watchInput(input);
+      if (!document.hidden && picking) watchInput($('#file-input'));
     });
-    // The picker closes without a reliable event on iOS, so start watching as
-    // soon as the user touches the zone.
-    drop.addEventListener('touchstart', function () { markPicking(); watchInput(input); }, { passive: true });
-    drop.addEventListener('pointerdown', function () { markPicking(); watchInput(input); });
-    drop.addEventListener('mouseenter', function () { watchInput(input); });
+    drop.addEventListener('touchstart', startPicking, { passive: true });
+    drop.addEventListener('pointerdown', startPicking);
+    drop.addEventListener('mouseenter', function () { if (!picking) watchInput($('#file-input')); });
 
     ['dragenter', 'dragover'].forEach(function (t) {
       drop.addEventListener(t, function (e) { e.preventDefault(); drop.classList.add('over'); });

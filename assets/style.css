@@ -321,6 +321,15 @@ input[type="text"]:focus { outline: none; border-color: var(--accent); box-shado
 .status[data-tone="good"] { color: var(--good); }
 .status[data-tone="bad"] { color: var(--bad); }
 
+/* A file the browser could not read - typically a Photos item iOS refused to
+   export. */
+.filelist li.bad {
+  border-color: rgba(255, 107, 107, .45);
+  background: rgba(255, 107, 107, .08);
+}
+.filelist li.bad .fsize { color: var(--bad); white-space: normal; }
+.filelist li.bad .fname { color: #ffb3b3; }
+
 .note { font-size: .78rem; color: var(--muted); margin: .5rem 0 0; }
 .note.warn { color: #ffc46b; }
 
