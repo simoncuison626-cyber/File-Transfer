@@ -122,19 +122,26 @@
     $('#send-go').textContent = sendFiles.length ? 'Create invite for ' + sendFiles.length + ' file' + (sendFiles.length > 1 ? 's' : '') : 'Create invite';
 
     var note = $('#send-size-note');
-    var GB = 1024 * 1024 * 1024;
+    var MB = 1024 * 1024;
+    var GB = 1024 * MB;
+    // Measured: receiving holds about 1.05x the file size in memory
+    // (300 MB -> 322 MB, 500 MB -> 524 MB, 2.5 GB -> 2551 MB).
+    var needs = total * 1.05;
+    var txt = '';
+
     if (total > GB) {
-      note.textContent = 'That is ' + fmtBytes(total) + '. Files this large are held in memory ' +
-        'until they are saved, so a phone may run out of space. Receiving on a ' +
-        'computer is much safer, and splitting the file is safest of all.';
-      note.hidden = false;
-    } else if (total > 400 * 1024 * 1024) {
-      note.textContent = 'That is ' + fmtBytes(total) + '. Large transfers work, but they need ' +
-        'both devices to stay on the page and awake until the progress reaches 100%.';
-      note.hidden = false;
-    } else {
-      note.hidden = true;
+      txt = 'This is ' + fmtBytes(total) + '. Receiving it holds about ' + fmtBytes(needs) +
+        ' in memory until you save it, so send it to a computer — an iPhone will run ' +
+        'out of memory and Safari will close the page. Expect it to take several minutes; ' +
+        'keep both screens awake until it reaches 100%.';
+    } else if (total > 400 * MB) {
+      txt = 'This is ' + fmtBytes(total) + '. Receiving it needs roughly ' + fmtBytes(needs) +
+        ' of free memory, and a few minutes. Keep the page open on both devices until it finishes.';
+    } else if (total > 150 * MB) {
+      txt = 'This is ' + fmtBytes(total) + '. Keep the page open on both devices until it reaches 100%.';
     }
+    note.textContent = txt;
+    note.hidden = !txt;
   }
 
   /* iOS Safari can drop the `change` event for the Photo Library entirely, so

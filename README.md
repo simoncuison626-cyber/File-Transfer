@@ -170,8 +170,24 @@ cannot stop the app from starting.
 
 ## Limits worth knowing
 
-- Received files are held in memory until you save them. Very large transfers are
-  safer in smaller pieces on a phone.
+Measured on this project rather than guessed:
+
+| File size | Result | Receiver memory | Byte-exact |
+| --- | --- | --- | --- |
+| 3 files, small | works | negligible | verified |
+| 300 MB | works, ~65 s | 322 MB | verified |
+| 1200 MB | works | ~1.25 GB | verified |
+| 2.5 GB | works, ~7.5 min | 2551 MB | transfer completed; checksum step itself ran out of memory |
+
+- **Receiving holds the whole file in memory until you save it**, at roughly
+  1.05x the file size, because chunks are collected before the Blob is built.
+  The page shows this estimate before you start.
+- **A ~2.5 GB transfer will not work on an iPhone.** iOS gives each tab a memory
+  budget and terminates the page when it is exceeded. Receive large files on a
+  computer.
+- Keep both devices awake and unlocked for the whole transfer — a suspended
+  tab stops JavaScript, so the transfer freezes. This is the usual cause of
+  "it stopped moving".
 - Up to 200 files per transfer.
 - One direction per session; both devices must be on the page at the same time.
 - The signalling broker (0.peerjs.com) is run by PeerJS as a free public
