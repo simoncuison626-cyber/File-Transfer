@@ -121,14 +121,35 @@
   }
 
   function addFiles(list) {
-    Array.prototype.forEach.call(list, function (file) {
-      if (sendFiles.length >= window.BeamNet.MAX_FILES) return;
+    var added = 0;
+    for (var i = 0; i < list.length; i++) {
+      if (sendFiles.length >= window.BeamNet.MAX_FILES) break;
+      var file = list[i];
       var dup = sendFiles.some(function (f) {
         return f.name === file.name && f.size === file.size && f.lastModified === file.lastModified;
       });
-      if (!dup) sendFiles.push(file);
-    });
+      if (!dup) { sendFiles.push(file); added++; }
+    }
     renderSendFiles();
+    return added;
+  }
+
+  /* iOS Safari is inconsistent about firing `change` for the photo library, so
+     re-check the input whenever the tab regains focus. Cheap, and it stops
+     "I picked a photo and nothing happened". */
+  function syncInput(input) {
+    if (input.files && input.files.length) {
+      var added = addFiles(input.files);
+      input.value = '';
+      if (added > 0) toast(added + ' file' + (added > 1 ? 's' : '') + ' added');
+      scrollListIntoView();
+    }
+  }
+
+  function scrollListIntoView() {
+    var first = $('#send-files li');
+    if (!first) return;
+    try { first.scrollIntoView({ block: 'nearest' }); } catch (e) { }
   }
 
   function renderMeter(prefix, info) {
@@ -420,11 +441,15 @@
     // ---- send panel
     var drop = $('#drop');
     var input = $('#file-input');
-    drop.addEventListener('click', function () { input.click(); });
-    drop.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); }
+
+    // The input itself is what the user taps; do not call input.click() from
+    // script, because iOS Safari ignores that and opens nothing.
+    input.addEventListener('change', function () { syncInput(input); });
+
+    window.addEventListener('focus', function () { syncInput(input); });
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) syncInput(input);
     });
-    input.addEventListener('change', function () { addFiles(input.files); input.value = ''; });
 
     ['dragenter', 'dragover'].forEach(function (t) {
       drop.addEventListener(t, function (e) { e.preventDefault(); drop.classList.add('over'); });

@@ -52,13 +52,16 @@ a { color: #5b8cff; }
       <p class="hint">This is the device the files are coming <em>from</em>.</p>
     </div>
 
-    <div class="drop" id="drop" tabindex="0" role="button" aria-label="Choose files to send">
+    <div class="drop" id="drop">
       <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <path d="M12 16V4"/><path d="m7.5 8.5 4.5-4.5 4.5 4.5"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>
       </svg>
       <strong>Choose files</strong>
       <span>or drop them here</span>
-      <input type="file" id="file-input" multiple hidden>
+      <!-- Real, rendered input that covers the zone. iOS Safari will not open
+           the photo picker for a display:none input, or for one activated by
+           script, so the user taps this directly. -->
+      <input type="file" id="file-input" multiple aria-label="Choose files to send">
     </div>
 
     <ul class="filelist" id="send-files"></ul>

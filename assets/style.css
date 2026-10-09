@@ -103,6 +103,7 @@ body {
 /* --------------------------------------------------------------- drop -- */
 
 .drop {
+  position: relative;
   display: grid;
   place-items: center;
   gap: .25rem;
@@ -114,6 +115,21 @@ body {
   color: var(--muted);
   cursor: pointer;
   transition: border-color .15s, background .15s, color .15s;
+}
+
+/* The input is laid over the whole zone and made invisible, not hidden. iOS
+   Safari refuses to open the picker for a display:none input. */
+.drop input[type="file"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 1;
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 .drop strong { color: var(--text); font-weight: 600; }
