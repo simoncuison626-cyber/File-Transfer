@@ -299,6 +299,11 @@ $serveWorker = {
                     $response.StatusCode     = 200
                     $response.ContentType    = $type
                     $response.ContentLength64 = $bytes.Length
+                    # Never cache. Safari will otherwise keep serving an old
+                    # app.js after an edit and the fix appears to do nothing.
+                    $response.Headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+                    $response.Headers['Pragma'] = 'no-cache'
+                    $response.Headers['Expires'] = '0'
                     $response.OutputStream.Write($bytes, 0, $bytes.Length)
                 } else {
                     $response.StatusCode = 404

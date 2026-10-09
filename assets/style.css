@@ -324,6 +324,17 @@ input[type="text"]:focus { outline: none; border-color: var(--accent); box-shado
 .note { font-size: .78rem; color: var(--muted); margin: .5rem 0 0; }
 .note.warn { color: #ffc46b; }
 
+/* Persistent confirmation that the tap registered. */
+.note.picked {
+    color: var(--good);
+    font-weight: 600;
+    font-size: .84rem;
+    padding: .45rem .6rem;
+    background: rgba(63, 208, 138, .1);
+    border: 1px solid rgba(63, 208, 138, .3);
+    border-radius: 9px;
+}
+
 /* -------------------------------------------------------------- offer -- */
 
 .offer { margin-top: .3rem; }

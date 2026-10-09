@@ -107,6 +107,16 @@
       ul.appendChild(li);
     });
 
+    // A permanent line, not just a toast, so it is obvious the tap registered.
+    var picked = $('#send-picked');
+    if (sendFiles.length) {
+      picked.textContent = sendFiles.length + ' file' + (sendFiles.length > 1 ? 's' : '') +
+        ' selected \u00b7 ' + fmtBytes(totalOf(sendFiles));
+      picked.hidden = false;
+    } else {
+      picked.hidden = true;
+    }
+
     var total = totalOf(sendFiles);
     $('#send-go').disabled = sendFiles.length === 0 || sendInvited;
     $('#send-go').textContent = sendFiles.length ? 'Create invite for ' + sendFiles.length + ' file' + (sendFiles.length > 1 ? 's' : '') : 'Create invite';
@@ -118,6 +128,24 @@
     } else {
       note.hidden = true;
     }
+  }
+
+  /* iOS Safari can drop the `change` event for the Photo Library entirely, so
+     poll the input for a while after the picker closes. */
+  var watchTimer = null;
+  function watchInput(input) {
+    if (watchTimer) clearInterval(watchTimer);
+    var ticks = 0;
+    watchTimer = setInterval(function () {
+      ticks++;
+      if (input.files && input.files.length) {
+        clearInterval(watchTimer);
+        watchTimer = null;
+        syncInput(input);
+        return;
+      }
+      if (ticks > 40) { clearInterval(watchTimer); watchTimer = null; }
+    }, 250);
   }
 
   function addFiles(list) {
@@ -143,7 +171,9 @@
       input.value = '';
       if (added > 0) toast(added + ' file' + (added > 1 ? 's' : '') + ' added');
       scrollListIntoView();
+      return true;
     }
+    return false;
   }
 
   function scrollListIntoView() {
@@ -446,10 +476,15 @@
     // script, because iOS Safari ignores that and opens nothing.
     input.addEventListener('change', function () { syncInput(input); });
 
-    window.addEventListener('focus', function () { syncInput(input); });
+    window.addEventListener('focus', function () { watchInput(input); });
     document.addEventListener('visibilitychange', function () {
-      if (!document.hidden) syncInput(input);
+      if (!document.hidden) watchInput(input);
     });
+    // The picker closes without a reliable event on iOS, so start watching as
+    // soon as the user touches the zone.
+    drop.addEventListener('touchstart', function () { watchInput(input); }, { passive: true });
+    drop.addEventListener('pointerdown', function () { watchInput(input); });
+    drop.addEventListener('mouseenter', function () { watchInput(input); });
 
     ['dragenter', 'dragover'].forEach(function (t) {
       drop.addEventListener(t, function (e) { e.preventDefault(); drop.classList.add('over'); });
