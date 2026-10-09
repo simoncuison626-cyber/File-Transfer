@@ -26,6 +26,10 @@
 .PARAMETER SelfTest
     Start, fetch the site over the LAN address, print the result and stop again.
 
+.PARAMETER Diagnose
+    Print everything that decides whether a phone can reach this machine, and
+    what to fix. Run this when the phone sits on "loading".
+
 .EXAMPLE
     .\Start-Beam.ps1
     .\Start-Beam.ps1 -Port 9000
@@ -36,7 +40,8 @@ param(
     [int]    $Port = 8000,
     [switch] $NoBrowser,
     [switch] $CleanFirewall,
-    [switch] $SelfTest
+    [switch] $SelfTest,
+    [switch] $Diagnose
 )
 
 $ErrorActionPreference = 'Stop'
@@ -71,6 +76,22 @@ function Test-IsAdmin {
 
 function Get-RuleName { param([int]$ForPort) "$ruleName TCP $ForPort" }
 
+function Get-NetworkProfiles {
+    # The profiles actually in force on the interfaces we might bind to.
+    # A rule that does not cover the live profile is silently ignored by
+    # Windows, which is what makes the phone hang on "loading".
+    $cats = @(Get-NetConnectionProfile -ErrorAction SilentlyContinue |
+              ForEach-Object { $_.NetworkCategory } |
+              Where-Object { $_ -in @('Domain', 'Private', 'Public') } |
+              Select-Object -Unique)
+    if ($cats.Count -eq 0) { $cats = @('Private') }
+    return $cats
+}
+
+function Test-IsPublicNetwork {
+    return ((Get-NetworkProfiles) -contains 'Public')
+}
+
 function Remove-OurFirewallRules {
     $rules = @(Get-NetFirewallRule -ErrorAction SilentlyContinue |
                Where-Object { $_.DisplayName -like "$ruleName*" })
@@ -101,33 +122,71 @@ function Ensure-FirewallRule {
     param([int]$ForPort)
     $name = Get-RuleName -ForPort $ForPort
 
-    if (Get-NetFirewallRule -DisplayName $name -ErrorAction SilentlyContinue) {
-        Write-Ok "Firewall already allows inbound TCP $ForPort."
-        return $true
-    }
+    # Cover every profile that is actually in use, or Windows ignores the rule.
+    $profiles = Get-NetworkProfiles
+    $profileArg = ($profiles -join ',')
 
-    $cmd = "New-NetFirewallRule -DisplayName '$name' -Direction Inbound -Action Allow -Protocol TCP -LocalPort $ForPort -Profile Private,Domain | Out-Null"
-    if (Test-IsAdmin) {
-        try {
-            # Called directly rather than via Invoke-Expression, so there is no
-            # string-eval sink here at all.
-            New-NetFirewallRule -DisplayName $name -Direction Inbound -Action Allow `
-                -Protocol TCP -LocalPort $ForPort -Profile Private,Domain -ErrorAction Stop | Out-Null
-            Write-Ok "Firewall rule added for TCP $ForPort."
+    $existing = Get-NetFirewallRule -DisplayName $name -ErrorAction SilentlyContinue
+    if ($existing) {
+        $current = (Get-NetFirewallPortFilter -AssociatedNetFirewallRule $existing -ErrorAction SilentlyContinue |
+                    Where-Object { $_.LocalPort -eq $ForPort })
+        $covered = ($existing.Profile -join ',')
+        if ($current -and ($profiles | Where-Object { $covered -notmatch $_ })) {
+            Write-Info "Widening an existing rule to cover: $profileArg"
+            try {
+                if (Test-IsAdmin) {
+                    Set-NetFirewallRule -DisplayName $name -Profile $profiles -Enabled True -ErrorAction Stop
+                } else {
+                    Invoke-Elevated -Command "Set-NetFirewallRule -DisplayName '$name' -Profile '$profileArg' -Enabled True" | Out-Null
+                    Set-NetFirewallRule -DisplayName $name -Profile $profiles -Enabled True -ErrorAction Stop
+                }
+                Write-Ok "Firewall rule now covers $profileArg."
+            } catch {
+                Write-Warn "Could not widen the rule: $($_.Exception.Message)"
+            }
+        } else {
+            Write-Ok "Firewall already allows inbound TCP $ForPort ($covered)."
             return $true
-        } catch {
-            Write-Warn "Could not add the firewall rule: $($_.Exception.Message)"
-            return $false
+        }
+    } else {
+        $cmd = "New-NetFirewallRule -DisplayName '$name' -Direction Inbound -Action Allow -Protocol TCP -LocalPort $ForPort -Profile '$profileArg' | Out-Null"
+        if (Test-IsAdmin) {
+            try {
+                # Called directly rather than via Invoke-Expression, so there is
+                # no string-eval sink here at all.
+                New-NetFirewallRule -DisplayName $name -Direction Inbound -Action Allow `
+                    -Protocol TCP -LocalPort $ForPort -Profile $profiles -ErrorAction Stop | Out-Null
+                Write-Ok "Firewall rule added for TCP $ForPort ($profileArg)."
+            } catch {
+                Write-Warn "Could not add the firewall rule: $($_.Exception.Message)"
+                return $false
+            }
+        } else {
+            Write-Info 'Adding a firewall rule needs Administrator - a prompt will appear.'
+            if (-not (Invoke-Elevated -Command $cmd)) {
+                Write-Warn 'No firewall rule was added, so a phone will NOT be able to connect.'
+                return $false
+            }
+            Write-Ok "Firewall rule added for TCP $ForPort ($profileArg)."
         }
     }
 
-    Write-Info 'Adding a firewall rule needs Administrator - a prompt will appear.'
-    if (Invoke-Elevated -Command $cmd) {
-        Write-Ok "Firewall rule added for TCP $ForPort."
-        return $true
+    if (Test-IsPublicNetwork) {
+        Write-Host ''
+        Write-Warn 'This network is set to PUBLIC, so the rule has been widened to'
+        Write-Warn 'include it - without this the phone cannot connect at all.'
+        Write-Host ''
+        Write-Host '   That means anyone on this Wi-Fi can read the files in this' -ForegroundColor DarkGray
+        Write-Host '   folder while the window is open. Do not use it on café or' -ForegroundColor DarkGray
+        Write-Host '   airport wifi. Remove the rule afterwards with:' -ForegroundColor DarkGray
+        Write-Host '     .\Start-Beam.ps1 -CleanFirewall' -ForegroundColor DarkGray
+        Write-Host ''
+        Write-Info 'Safer alternative: mark this network Private in Windows Settings.'
+        Write-Host '   Or just use the hosted site, which needs no firewall change at all.'
+        Write-Host ''
     }
-    Write-Warn 'No firewall rule was added, so a phone may not be able to connect.'
-    return $false
+
+    return $true
 }
 
 function Get-FreePort {
@@ -272,6 +331,85 @@ function Start-ServeLoop {
     return @{ Runspace = $rs; Shell = $ps; Handle = $handle }
 }
 
+# --------------------------------------------------------------- diagnose ---
+
+if ($Diagnose) {
+    Write-Host ''
+    Write-Host '  transferfile.com - reachability diagnosis' -ForegroundColor White
+    Write-Host '  -----------------------------------------' -ForegroundColor DarkGray
+
+    $ok = 0
+    $bad = 0
+    function Report {
+        param([bool]$Good, [string]$GoodText, [string]$BadText)
+        if ($Good) {
+            $script:ok++
+            Write-Host "   [ok]   $GoodText" -ForegroundColor Green
+        } else {
+            $script:bad++
+            Write-Host "   [!!]   $BadText" -ForegroundColor Red
+        }
+    }
+
+    Write-Section '1. Is a server running?'
+    $running = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -ErrorAction SilentlyContinue |
+                 Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -like '*Start-Beam.ps1*' }).Count
+    Report ($running -gt 0) 'Start-Beam is running' 'No server is running - double-click Start-Beam.cmd and leave the window open.'
+
+    $listen = @(Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue)
+    Report ($listen.Count -gt 0) "Something is listening on port $Port" "Nothing is listening on port $Port (Start-Beam is not up)."
+
+    Write-Section '2. Network'
+    $profiles = Get-NetConnectionProfile -ErrorAction SilentlyContinue
+    $public = @($profiles | Where-Object { $_.NetworkCategory -eq 'Public' })
+    Report ($public.Count -eq 0) 'Network is not marked Public' `
+        ("Network is PUBLIC (" + ($public.Name -join ', ') + '). That is the usual cause of this problem: the firewall rule has to include the Public profile.')
+
+    $lan2 = Get-LanAddress
+    Report ([bool]$lan2) "LAN address detected: $lan2" 'No LAN address - connect to Wi-Fi or Ethernet first.'
+
+    Write-Section '3. Address the phone must use'
+    Write-Host "        http://${lan2}:$Port/" -ForegroundColor Black -BackgroundColor Cyan
+    Write-Host ''
+    Write-Info 'Type that on the phone. Not localhost, and not 127.0.0.1.'
+    Write-Info 'The phone must be on the SAME wifi as this computer.'
+    Write-Info 'Check for a second wifi network, a guest network, or a VPN on the phone.'
+
+    Write-Section '4. Firewall'
+    $ruleNameNow = Get-RuleName -ForPort $Port
+    $rule = Get-NetFirewallRule -DisplayName $ruleNameNow -ErrorAction SilentlyContinue
+    Report ([bool]$rule) "Firewall rule exists for TCP $Port" "No firewall rule for TCP $Port - run Start-Beam.cmd as Administrator once."
+    if ($rule) {
+        $covers = $rule.Profile -join ','
+        $need = Get-NetworkProfiles
+        # 'Any' matches every profile, so it always covers what is in force.
+        if ($covers -match 'Any') {
+            Report $true "Rule covers all profiles (Any) - active profile is $($need -join ',')"
+        } else {
+            $missing = @($need | Where-Object { $covers -notmatch $_ })
+            Report ($missing.Count -eq 0) "Rule covers the active profile(s): $covers" `
+                "The rule only covers '$covers' but this network needs '$($need -join ',')'. Windows ignores rules that do not match - this is why the phone hangs."
+        }
+    }
+
+    Write-Section '5. Serving'
+    try {
+        $r = Invoke-WebRequest -Uri "http://${lan2}:$Port/" -TimeoutSec 4 -UseBasicParsing
+        Report ($r.StatusCode -eq 200) "Site answers on this machine (HTTP $($r.StatusCode))" 'Site did not answer - restart Start-Beam.'
+    } catch {
+        Report $false 'Site does not answer on this machine' 'Site did not answer - restart Start-Beam.'
+    }
+    Write-Info 'This last check cannot see the firewall: traffic from this PC to'
+    Write-Info 'its own address never crosses it. It only proves the site serves.'
+
+    Write-Host ''
+    if ($bad -eq 0) { Write-Ok 'Nothing obviously wrong here. If the phone still hangs, it is almost certainly a different wifi network or a VPN on the phone.' }
+    else            { Write-Bad "$bad problem(s) above." }
+    Write-Host ''
+    Read-Host '   Press Enter to close' | Out-Null
+    exit $(if ($bad -eq 0) { 0 } else { 1 })
+}
+
 # --------------------------------------------------------------- cleanup ---
 
 if ($CleanFirewall) {
@@ -375,9 +513,19 @@ if ($SelfTest) {
         else                 { Write-Bad ("{0,-42} {1}" -f $r.Path, $r.Code) }
     }
     $badCount = @($results | Where-Object { $_.Code -ne 200 }).Count
-    if ($badCount -gt 0)            { Write-Host ''; Write-Bad "$badCount resource(s) failed."; }
-    elseif (-not $firewallOk)       { Write-Host ''; Write-Warn 'Firewall rule missing - a phone may not reach this.' }
-    else                            { Write-Host ''; Write-Ok 'PASS - the phone should be able to reach this now.' }
+    if ($badCount -gt 0) {
+        Write-Host ''
+        Write-Bad "$badCount resource(s) failed."
+    } else {
+        Write-Host ''
+        Write-Ok 'PASS - every file loads over the LAN address.'
+    }
+    Write-Host ''
+    Write-Info 'Note: this test only proves the files are served. A request from'
+    Write-Info 'this PC never crosses the firewall, so it cannot confirm the'
+    Write-Info 'phone can get in. If the phone still hangs, run:'
+    Write-Host '     .\Start-Beam.ps1 -Diagnose' -ForegroundColor White
+    Write-Host ''
 
     $listener.Stop()
     try { $serving.Shell.Dispose(); $serving.Runspace.Close() } catch { }
