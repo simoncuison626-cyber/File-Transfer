@@ -247,6 +247,8 @@ $mime = @{
     '.svg'         = 'image/svg+xml'
     '.png'         = 'image/png'
     '.jpg'         = 'image/jpeg'
+    '.ico'         = 'image/x-icon'
+    '.gif'         = 'image/gif'
     '.webmanifest' = 'application/manifest+json'
     '.json'        = 'application/json'
     '.txt'         = 'text/plain; charset=utf-8'

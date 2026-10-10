@@ -170,6 +170,7 @@ assets/style.css           all styling
 assets/net.js              WebRTC transport, framing, chunking, backpressure
 assets/app.js              UI: file picking, QR pairing, progress, save/share
 assets/icon*.png|svg       app icons
+assets/favicon.ico          multi-size .ico (16-256px) for older browsers
 assets/vendor/             PeerJS 1.5.4 + qrcode-generator 1.4.4 (both MIT)
 Start-Beam.cmd / .ps1      local one-click launcher (optional, not needed for hosting)
 ```
