@@ -15,7 +15,8 @@
     listed under -CleanFirewall.
 
 .PARAMETER Port
-    Port to serve on. If it is busy, the next free port is used.
+    Port to serve on. Defaults to 8001. If it is busy, the next free port is
+    used - read the address it prints rather than assuming the default.
 
 .PARAMETER NoBrowser
     Do not open the site in the default browser.
@@ -37,7 +38,7 @@
 #>
 [CmdletBinding()]
 param(
-    [int]    $Port = 8000,
+    [int]    $Port = 8001,
     [switch] $NoBrowser,
     [switch] $CleanFirewall,
     [switch] $SelfTest,

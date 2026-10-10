@@ -87,12 +87,22 @@ It detects your LAN address, opens the required firewall rule, starts a server
 and prints the URL for your phone (also copied to the clipboard). Close the
 window to stop it; nothing is left running.
 
+It listens on **port 8001** by default, and prints the address it actually
+bound to. Read that address rather than assuming — if 8001 is busy it moves to
+the next free port.
+
 ```powershell
 .\Start-Beam.ps1 -Port 9000       # different port
 .\Start-Beam.ps1 -NoBrowser       # do not open a browser
 .\Start-Beam.ps1 -SelfTest        # verify every file loads, then stop
+.\Start-Beam.ps1 -Diagnose        # why a phone cannot connect
 .\Start-Beam.ps1 -CleanFirewall   # remove the firewall rule again
 ```
+
+> Your router can hand this PC a different address now and then (it has been
+> 192.168.1.8, .9 and .6 during development). If the phone suddenly cannot
+> reach it, the address has probably changed — re-run Start-Beam and use the
+> address it prints now. `.\Start-Beam.ps1 -Diagnose` shows the current one.
 
 Needs Administrator the first time, because Windows won't let a normal account
 open a network port or add a firewall rule. If it can't, it says so and stops.
