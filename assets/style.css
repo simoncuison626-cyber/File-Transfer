@@ -330,6 +330,26 @@ input[type="text"]:focus { outline: none; border-color: var(--accent); box-shado
 .filelist li.bad .fsize { color: var(--bad); white-space: normal; }
 .filelist li.bad .fname { color: #ffb3b3; }
 
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  margin: .6rem 0 0;
+  font-size: .82rem;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.toggle input {
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
 .note { font-size: .78rem; color: var(--muted); margin: .5rem 0 0; }
 .note.warn { color: #ffc46b; }
 

@@ -33,12 +33,12 @@ a { color: #5b8cff; }
   <div class="wrap top-inner">
     <div class="brand">
       <span class="brand-mark" aria-hidden="true">
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M4 9.5h12"/><path d="M12.8 6.2 16.5 9.5l-3.7 3.3"/>
-          <path d="M20 14.5H8"/><path d="M11.2 11.2 7.5 14.5l3.7 3.3"/>
+        <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 9.5H17"/><path d="M17 7.5 L20 9.5 L17 11.5 Z"/>
+          <path d="M21 14.5H7"/><path d="M7 12.5 L4 14.5 L7 16.5 Z"/>
         </svg>
       </span>
-      <span class="brand-name">transferfile<span class="brand-tld">.com</span></span>
+      <span class="brand-name">TransferFile<span class="brand-tld"></span></span>
     </div>
     <p class="tagline">Direct device&rarr;device transfer &middot; no uploads, no accounts</p>
   </div>
@@ -64,6 +64,11 @@ a { color: #5b8cff; }
            script, so the user taps this directly. -->
       <input type="file" id="file-input" multiple aria-label="Choose files to send">
     </div>
+    <label class="toggle" id="multi-toggle">
+      <input type="checkbox" id="multi-box">
+      <span>Pick several at once</span>
+    </label>
+    <p class="note" id="multi-hint" hidden></p>
 
     <ul class="filelist" id="send-files"></ul>
     <p class="note picked" id="send-picked" role="status" aria-live="polite" hidden></p>

@@ -97,15 +97,30 @@
      sent. */
   function probeFile(file, seq) {
     if (typeof file.slice !== 'function' || typeof file.arrayBuffer !== 'function') return;
-    var probe;
-    try { probe = file.slice(0, 64 * 1024).arrayBuffer(); }
-    catch (e) { markFileBad(seq, 'cannot be read'); return; }
-    if (!probe || !probe.then) return;
-    probe.then(function (buf) {
-      if (!buf || !buf.byteLength) markFileBad(seq, 'came back empty from Photos');
-    }, function () {
-      markFileBad(seq, 'cannot be read - try picking it from the Files app instead');
-    });
+    // Reading the head of a large Photos video forces iOS to materialise the
+    // whole export, which is the slow path we are trying not to trigger. Only
+    // probe small files, where the check is cheap.
+    if (file.size > 32 * 1024 * 1024) return;
+
+    var attempt = function (triesLeft) {
+      var probe;
+      try { probe = file.slice(0, 64 * 1024).arrayBuffer(); }
+      catch (e) {
+        if (triesLeft > 0) return attempt(triesLeft - 1);
+        markFileBad(seq, 'cannot be read');
+        return;
+      }
+      if (!probe || !probe.then) return;
+      probe.then(function (buf) {
+        if (triesLeft > 0) attempt(triesLeft - 1);
+        else if (!buf || !buf.byteLength) markFileBad(seq, 'came back empty from Photos');
+      }, function () {
+        // One retry: a first read can fail transiently while iOS exports.
+        if (triesLeft > 0) attempt(triesLeft - 1);
+        else markFileBad(seq, 'cannot be read - try picking it from the Files app instead');
+      });
+    };
+    attempt(1);
   }
 
   function markFileBad(seq, why) {
@@ -220,8 +235,10 @@
       var secs = Math.round((Date.now() - pickingSince) / 1000);
       var wait;
       if (isIOS() && secs > 8) {
-        wait = 'Still waiting for iOS to hand the file over (' + secs + 's). ' +
-               'If it stays like this, pick it from the Files app instead - that works reliably.';
+        wait = 'Still waiting for iOS to hand the file over (' + secs + 's). ';
+        wait += wantMulti
+          ? 'If it stays like this, pick it from the Files app instead - that works reliably.'
+          : 'Videos sometimes need "Pick several at once" below; photos work better without it.';
       } else {
         wait = 'Waiting for the file picker' + (secs > 1 ? ' (' + secs + 's)' : '') + '…';
       }
@@ -615,12 +632,17 @@
     return el;
   }
 
+  var wantMulti = false;
+
   function makeInput() {
     var el = document.createElement('input');
     el.type = 'file';
     el.id = 'file-input';
     el.setAttribute('aria-label', 'Choose files to send');
-    if (!isIOS()) el.multiple = true;
+    // iOS Photos behaves differently with and without `multiple`: multi-select
+    // appears to reject some photos, single-select appears to reject some
+    // videos. So it is a user choice rather than a hard-coded guess.
+    el.multiple = wantMulti || !isIOS();
     return armInput(el);
   }
 
@@ -640,12 +662,25 @@
   function init() {
     // ---- send panel
     var drop = $('#drop');
+    var multiBox = $('#multi-box');
 
     // Start from a clean input built by makeInput(), so iOS gets a fresh
     // element rather than whatever the markup shipped with.
     var existing = $('#file-input');
     var input = makeInput();
     existing.parentNode.replaceChild(input, existing);
+
+    // Toggling re-arms the picker immediately - no reload needed.
+    // Off-screen on desktop, where multi-select is always available.
+    if (!isIOS()) {
+      $('#multi-toggle').hidden = true;
+    }
+    multiBox.checked = wantMulti;
+    multiBox.addEventListener('change', function () {
+      wantMulti = multiBox.checked;
+      resetInput();
+      toast(wantMulti ? 'Now picking several at once' : 'Now picking one at a time');
+    });
 
     // The input itself is what the user taps; do not call input.click() from
     // script, because iOS Safari ignores that and opens nothing.
