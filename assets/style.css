@@ -350,6 +350,50 @@ input[type="text"]:focus { outline: none; border-color: var(--accent); box-shado
   cursor: pointer;
 }
 
+/* --------------------------------------------------------- diagnostics -- */
+
+.diag {
+    margin-top: .9rem;
+    border: 1px solid var(--line-soft);
+    border-radius: 10px;
+    background: rgba(0, 0, 0, .25);
+}
+
+.diag summary {
+    padding: .5rem .6rem;
+    font-size: .82rem;
+    font-weight: 600;
+    color: var(--muted);
+    cursor: pointer;
+    list-style: none;
+}
+
+.diag summary::-webkit-details-marker { display: none; }
+.diag summary::before { content: '▸ '; }
+.diag[open] summary::before { content: '▾ '; }
+.diag-hint { font-weight: 400; font-size: .76rem; opacity: .8; }
+
+.diag-bar {
+    display: flex;
+    gap: .4rem;
+    flex-wrap: wrap;
+    padding: 0 .6rem .5rem;
+}
+
+.diag-log {
+    margin: 0;
+    padding: .6rem;
+    max-height: 220px;
+    overflow: auto;
+    border-top: 1px solid var(--line-soft);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .68rem;
+    line-height: 1.45;
+    color: #9fb4d8;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
 .note { font-size: .78rem; color: var(--muted); margin: .5rem 0 0; }
 .note.warn { color: #ffc46b; }
 

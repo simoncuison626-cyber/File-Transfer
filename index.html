@@ -70,6 +70,16 @@ a { color: #5b8cff; }
     </label>
     <p class="note" id="multi-hint" hidden></p>
 
+    <details class="diag" id="diag">
+      <summary>Diagnostics <span class="diag-hint">— turn on to see why a pick is not registering</span></summary>
+      <div class="diag-bar">
+        <button type="button" class="btn ghost sm" id="diag-recheck">Re-check selection now</button>
+        <button type="button" class="btn ghost sm" id="diag-clear">Clear</button>
+        <button type="button" class="btn ghost sm" id="diag-copy">Copy</button>
+      </div>
+      <pre class="diag-log" id="diag-log">no events yet</pre>
+    </details>
+
     <ul class="filelist" id="send-files"></ul>
     <p class="note picked" id="send-picked" role="status" aria-live="polite" hidden></p>
     <p class="note warn" id="send-size-note" hidden></p>

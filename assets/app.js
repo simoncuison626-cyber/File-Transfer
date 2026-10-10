@@ -198,6 +198,69 @@
            (/Macintosh/.test(ua) && (navigator.maxTouchPoints || 0) > 1);
   }
 
+  /* Diagnostics. On iOS the page is suspended while the Photos picker is open
+     and the selection can be lost with no event at all, which makes this
+     impossible to debug by guessing. This records what actually happened so a
+     screenshot from the phone is enough to diagnose it. */
+  var diagOn = false;
+  var diagLines = [];
+  var t0 = Date.now();
+  var lastPoll = 0;
+
+  function diag(msg) {
+    if (!diagOn) return;
+    var s = ((Date.now() - t0) / 1000).toFixed(2);
+    var extra = '';
+    try {
+      var inp = document.querySelector('#file-input');
+      extra = inp ? ' | input.files=' + (inp.files ? inp.files.length : 'null') +
+                    ' multiple=' + (inp.multiple ? 'y' : 'n') : ' | no input';
+    } catch (e) { extra = ' | (input unreadable)'; }
+    diagLines.push(s + 's  ' + msg + extra);
+    if (diagLines.length > 80) diagLines.shift();
+    var el = document.querySelector('#diag-log');
+    if (el) {
+      el.textContent = diagLines.join('\n');
+      el.scrollTop = el.scrollHeight;
+    }
+  }
+
+  function bindDiagnostics() {
+    var box = document.querySelector('#diag');
+    var log = document.querySelector('#diag-log');
+    if (!box || !log) return;
+
+    box.addEventListener('toggle', function () {
+      diagOn = box.open;
+      if (diagOn) diag('diagnostics opened');
+    });
+
+    document.querySelector('#diag-clear').addEventListener('click', function () {
+      diagLines = [];
+      log.textContent = 'cleared';
+    });
+
+    document.querySelector('#diag-copy').addEventListener('click', function () {
+      copyText('transferfile.com diagnostics\n' + diagLines.join('\n'), 'Log');
+    });
+
+    document.querySelector('#diag-recheck').addEventListener('click', function () {
+      var inp = document.querySelector('#file-input');
+      if (!inp) { diag('no file input present'); return; }
+      diag('manual re-check');
+      if (syncInput(inp)) diag('manual re-check FOUND files');
+      else diag('manual re-check found nothing');
+    });
+
+    window.addEventListener('pageshow', function () { diag('pageshow' + (event.persisted ? ' (from bfcache)' : '')); });
+    window.addEventListener('pagehide', function () { diag('pagehide'); });
+    window.addEventListener('focus', function () { diag('window focus'); });
+    window.addEventListener('blur', function () { diag('window blur'); });
+    document.addEventListener('visibilitychange', function () {
+      diag('visibilitychange -> ' + (document.hidden ? 'HIDDEN (page suspended)' : 'visible'));
+    });
+  }
+
   /* The Photos app is drawn by iOS, so a web page cannot put a progress
      indicator inside it - that part is not reachable from a page. What the
      page can do is close the loop around it: show that the tap registered,
@@ -264,18 +327,24 @@
   function watchInput(input) {
     if (watchTimer) clearInterval(watchTimer);
     var ticks = 0;
+    diag('watching for a selection (up to 60s)');
     watchTimer = setInterval(function () {
       ticks++;
       if (input.files && input.files.length) {
         clearInterval(watchTimer);
         watchTimer = null;
+        diag('poll tick ' + ticks + ': FOUND ' + input.files.length + ' file(s)');
         syncInput(input);
         return;
       }
+      // Log periodically, so a screenshot shows whether polling is even alive
+      // after the page resumes from being suspended.
+      if (ticks % 8 === 0) diag('poll tick ' + ticks + ': still nothing');
       // Only call it a cancel once we are well past any plausible export.
       if (ticks > 240) { // ~60s
         clearInterval(watchTimer);
         watchTimer = null;
+        diag('gave up after 60s');
         if (picking) {
           picking = false;
           updatePicked();
@@ -307,10 +376,20 @@
   /* iOS Safari is inconsistent about firing `change` for the photo library, so
      re-check the input whenever the tab regains focus. Cheap, and it stops
      "I picked a photo and nothing happened". */
-  function syncInput(input) {
+function syncInput(input) {
+    // The change event and the poller both land here. Cancel the poller first,
+    // otherwise it re-reads the same selection from a detached input and
+    // consumes it a second time - which also confused the next pick.
+    if (watchTimer) { clearInterval(watchTimer); watchTimer = null; }
+
+    if (!input || !input.isConnected) {
+      diag('syncInput: input is detached, ignoring');
+      return false;
+    }
     if (input.files && input.files.length) {
       var added = addFiles(input.files);
       picking = false;
+      diag('files accepted, added ' + added);
       updatePicked();
       if (added > 0) toast(added + ' file' + (added > 1 ? 's' : '') + ' added');
       scrollListIntoView();
@@ -319,6 +398,7 @@
       resetInput();
       return true;
     }
+diag('syncInput: nothing on the input');
     return false;
   }
 
@@ -628,7 +708,14 @@
      Both are applied on iOS only; desktop keeps multi-select. */
 
   function armInput(el) {
-    el.addEventListener('change', function () { syncInput(el); });
+    el.addEventListener('change', function () {
+      diag('CHANGE event fired');
+      syncInput(el);
+    });
+    // A capture-phase listener too: on iOS the event can be dispatched before
+    // the page has finished resuming, so bubble phase is sometimes missed.
+    el.addEventListener('change', function () { diag('CHANGE (capture phase)'); }, true);
+    el.addEventListener('click', function () { diag('input clicked by user'); });
     return el;
   }
 
@@ -661,7 +748,13 @@
   function startPicking() {
     markPicking();
     var input = $('#file-input');
-    if (input) watchInput(input);
+    diag('user tapped the drop zone');
+    if (input) {
+      diag('starting watch on the mounted input');
+      watchInput(input);
+    } else {
+      diag('ERROR: no file input in the DOM');
+    }
   }
 
   function init() {
@@ -696,6 +789,8 @@
     drop.addEventListener('touchstart', startPicking, { passive: true });
     drop.addEventListener('pointerdown', startPicking);
     drop.addEventListener('mouseenter', function () { if (!picking) watchInput($('#file-input')); });
+
+    bindDiagnostics();
 
     ['dragenter', 'dragover'].forEach(function (t) {
       drop.addEventListener(t, function (e) { e.preventDefault(); drop.classList.add('over'); });
