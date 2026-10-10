@@ -647,6 +647,11 @@
   }
 
   function resetInput() {
+    // Never swap the input out while a pick is in flight. iOS Safari suspends
+    // the page while the Photos picker is open, and a picker that takes a
+    // while (large videos, iCloud originals) has been reported to lose the
+    // input entirely - leaving the page with nothing to read the choice from.
+    if (picking) return;
     var old = $('#file-input');
     if (!old || !old.parentNode) return;
     var fresh = makeInput();
